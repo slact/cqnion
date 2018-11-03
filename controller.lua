@@ -5,6 +5,11 @@ local Websocket = require "http.websocket"
 
 return function(cq, threadpool)
   assert(cq)
+  
+  threadpool:setMessageHandler(function(msgtype, data, fd)
+    print("controller got msg", msgtype, data, fd)
+  end)
+  
   local myserver = assert(HttpServer.listen {
     cq = cq,
     host = "0.0.0.0";
@@ -31,4 +36,7 @@ return function(cq, threadpool)
   assert(myserver:listen())
   local bound_port = select(3, myserver:localname())
   assert(io.stderr:write(string.format("Now listening on port %d\n", bound_port)))
+  
+  assert(threadpool:run())
+  assert(cq:loop())
 end

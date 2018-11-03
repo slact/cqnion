@@ -12,5 +12,3 @@ local Controller = require "controller"
 local threadpool = Threadpool.new(cq, 10, "worker")
 
 Controller(cq, threadpool)
-assert(threadpool:run())
-assert(cq:loop())

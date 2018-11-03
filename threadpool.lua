@@ -32,8 +32,9 @@ local function ipc_send_msg(socket, src_thread_number, msgtype, msg)
   msg = tostring(msg)
   assert(type(msg) == "string")
   local header = ("%s src:%d sz:%d\n"):format(msgtype, src_thread_number, #msg)
-  socket:send(header, 1, -1)
-  return socket:send(msg, 1, -1)
+  socket:send(header, 1, #header)
+  socket:send(msg, 1, #msg)
+  socket:send("\n", 1, 1)
 end
 local function ipc_send_socket(socket, src_thread_number, socket_to_send, msg)
   msg = msg or ""
@@ -45,18 +46,20 @@ local function ipc_send_socket(socket, src_thread_number, socket_to_send, msg)
 end
 
 local function ipc_receive(socket)
-  local header, msgtype, size, data, fd, src, err
+  local header, msgtype, src, size, data, fd, src, err
   header, err = socket:read("*l")
   if not header then return nil, nil, nil, err end
-  msgtype, size = header:match("^(%w+) src:(%d+) sz:(%d+)$")
+  print("HDR:<"..header..">")
+  msgtype, src, size = header:match("^(%w+) src:(%d+) sz:(%d+)$")
   size = tonumber(size)
   src = tonumber(src)
   assert(msgtype and size and src)
   if msgtype == "socket" then
     data, fd, err = socket:recvfd(1024)
   else
-    data, err = socket:recvfd(1024)
+    data, err = socket:read(size+1) --+1 for trailing newline
   end
+  
   if data ~= nil then
     return msgtype, data, fd
   else
@@ -65,14 +68,53 @@ local function ipc_receive(socket)
 end
 
 
-local function setMessageHandler(self, handler)
+local function set_message_handler(self, handler)
   assert(type(handler)=="function")
   self.__msg_handler = handler
   return self
 end
 
+local function ipc_yield_for_message(self, socket)
+  local coro, is_main = coroutine.running()
+  if is_main == true then
+    coro = nil
+  end
+  assert(coro, "must be run from coroutine")
+  if not self.__msg_coroutines then
+    self.__msg_coroutines = {}
+  end
+  table.insert(self,__msg_coroutines, coro)
+  return coroutine.yield()
+end
+
+local function ipc_socket_receiver_generator(self, socket)
+  return function()
+    local msgtype, data, fd, err
+    while not err do
+      msgtype, data, fd, err = ipc_receive(socket)
+      if self.__msg_coroutines then
+        local coros = self.__msg_coroutines
+        self.__msg_coroutines = nil
+        for _, coro in pairs(coros) do
+          coroutine.resume(msgtype, data, fd, err)
+        end
+      end
+      if self.__msg_handler then
+        self.__msg_handler(thread, msgtype, data, fd)
+      end
+    end
+  end
+end
+
 local thread_mt = {__index = {
-  setMessageHandler = setMessageHandler,
+  setMessageHandler = set_message_handler,
+  receiveMessage = ipc_yield_for_message,
+  sendMessage = function(self, msgtype, msg)
+    return ipc_send_msg(self.socket, self.number, msgtype, msg)
+  end,
+  sendSocket = function(self, socket, msg)
+    return ipc_send_socket(self.socket, self.number, socket, msg)
+  end,
   run = function(self)
     local ret, err, etc = self.cq:loop()
     return ret, err, etc
@@ -94,17 +136,22 @@ local thread_mt = {__index = {
 
 function Threadpool.newThread(socket, threadnum)
   local cqueues = require "cqueues"
-  local self = Thread.self()
-  if self.setname then
-    self:setname("thread "..threadnum)
+  local cqueue_thread = Thread.self()
+  assert(cqueue_thread, "called newThread outside of a thread. That's not how it's supposed to work")
+  local cq = cqueues.new()
+  if cqueue_thread.setname then
+    cqueue_thread:setname("thread "..threadnum)
   end
-  assert(self, "called newThread outside of a thread. That's not how it's supposed to work")
-  return setmetatable({
-    cq = cqueues.new(),
+  
+  local self = setmetatable({
+    cq = cq,
     socket = socket,
     number = threadnum,
-    thread = self,
+    thread = cqueue_thread,
   }, thread_mt)
+  --thread socketpair receiver
+  self.cq:wrap(ipc_socket_receiver_generator(self, socket))
+  return self
 end
 
 
@@ -131,8 +178,8 @@ Threadpool._mt = {__index = {
     return self
   end,
   
-  setMessageHandler = setMessageHandler,
-  
+  setMessageHandler = set_message_handler,
+  receiveMessage = ipc_yield_for_message,
   -- add a single thread to thread pool
   -- if slot is present, replaces thread at that index
   spawn = function(self, slot, ...)
@@ -167,15 +214,7 @@ Threadpool._mt = {__index = {
     }
     
     --thread socketpair receiver
-    self.cq:wrap(function()
-      local msgtype, data, fd, err
-      while not err do
-        msgtype, data, fd, err = ipc_receive(socket)
-        if self.__msg_handler then
-          self.__msg_handler(thread, msgtype, data, fd)
-        end
-      end
-    end)
+    self.cq:wrap(ipc_socket_receiver_generator(self, socket))
     
     --thread termination watcher
     self.cq:wrap(function()
