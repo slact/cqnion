@@ -5,11 +5,13 @@ local Websocket = require "http.websocket"
 local IPC = require "ipc"
 
 return function(cq, threadpool)
+  assert(cq)
   local myserver = assert(HttpServer.listen {
     cq = cq,
     host = "0.0.0.0";
     port = 7080;
     onstream = function(myserver,stream) -- luacheck: ignore 212
+      print("hello new connection")
       local ws, err = Websocket.new_from_stream(stream, assert(stream:get_headers()))
       assert(ws, err)
       ws:accept()
@@ -28,8 +30,6 @@ return function(cq, threadpool)
 
   -- Manually call :listen() so that we are bound before calling :localname()
   assert(myserver:listen())
-  do
-      local bound_port = select(3, myserver:localname())
-      assert(io.stderr:write(string.format("Now listening on port %d\n", bound_port)))
-  end
+  local bound_port = select(3, myserver:localname())
+  assert(io.stderr:write(string.format("Now listening on port %d\n", bound_port)))
 end

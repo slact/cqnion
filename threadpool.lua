@@ -66,20 +66,40 @@ end
 
 
 local function setMessageHandler(self, handler)
-    assert(type(handler)=="function")
-    self.__msg_handler = handler
-    return self
-  end
+  assert(type(handler)=="function")
+  self.__msg_handler = handler
+  return self
+end
 
-local thead_mt = {{__index = {
+local thread_mt = {__index = {
   setMessageHandler = setMessageHandler,
+  run = function(self)
+    local ret, err, etc = self.cq:loop()
+    return ret, err, etc
+  end,
+  wrap = function(self, func)
+    assert(type(func) == "function", "expected to wrap a function")
+    return self.cq:wrap(function()
+      xpcall(func, function(errmsg)
+        errmsg = ("\27[91;1mError in thread %d: %s\27[31;2m"):format(self.number, errmsg)
+        io.stderr:write(("%s\27[0m\n"):format(debug.traceback(errmsg, 1)))
+      end)
+    end)
+  end,
+  attach = function(self, coro)
+    assert(type(coro) == "thread", "expected to attach a coroutine")
+    return self.cq:attach(coro)
+  end
 }}
+
 function Threadpool.newThread(socket, threadnum)
+  local cqueues = require "cqueues"
   local self = Thread.self()
-  assert(, "called newThread outside of a thread. That's not how it's supposed to work")
+  assert(self, "called newThread outside of a thread. That's not how it's supposed to work")
   return setmetatable({
+    cq = cqueues.new(),
     socket = socket,
-    number = threadnum
+    number = threadnum,
     thread = self,
   }, thread_mt)
 end
@@ -122,20 +142,20 @@ Threadpool._mt = {__index = {
     else
       slot = self.thread_count + 1
     end
-    local thead_spawn = function(socket, num, thread_worker_module, ...)
+    local thread_spawn = function(socket, num, thread_worker_module, ...)
       -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       -- no upvalues, closures, or requires will be available in here.
       -- tread this as if it's been started in a new Lua VM -- which is
       -- exactly what happens
       -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      local cqueues = require "cqueues"
       local Threadpool = require "threadpool"
       local worker = require(thread_worker_module)
       local thread = Threadpool.newThread(socket, num)
       worker(thread, ...)
+      assert(pcall(thread.run, thread))
     end
     
-    local thread, socket, err = Thread.start(thead_spawn, slot, self.thread_module_name, ...)
+    local thread, socket, err = Thread.start(thread_spawn, slot, self.thread_module_name, ...)
     assert(thread, err)
     self.thread_count = self.thread_count + 1
     self.threads[slot] = {
@@ -159,10 +179,10 @@ Threadpool._mt = {__index = {
       local done, err, msg
       repeat
         done, err, msg = thread:join()
-        print("thead thing", done, err, msg)
+        print("thread done?", done, err, msg)
       until done
       if err then
-        io.stderr:write(("thread %d: %s\n"):format(my_num, tostring(err)))
+        io.stderr:write(("thread error %d: %s\n"):format(my_num, tostring(err)))
       end
     end)
   end,
