@@ -2,7 +2,6 @@ local Threadpool = require "threadpool"
 local cqueues = require "cqueues"
 local HttpServer = require "http.server"
 local Websocket = require "http.websocket"
-local IPC = require "ipc"
 
 return function(cq, threadpool)
   assert(cq)

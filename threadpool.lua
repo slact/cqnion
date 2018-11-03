@@ -95,6 +95,9 @@ local thread_mt = {__index = {
 function Threadpool.newThread(socket, threadnum)
   local cqueues = require "cqueues"
   local self = Thread.self()
+  if self.setname then
+    self:setname("thread "..threadnum)
+  end
   assert(self, "called newThread outside of a thread. That's not how it's supposed to work")
   return setmetatable({
     cq = cqueues.new(),
