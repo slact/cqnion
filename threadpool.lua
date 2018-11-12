@@ -6,6 +6,9 @@ function Threadpool.new(cq, num, thread_module_name)
   assert(cq, "cqueues object mising")
   local tp = setmetatable({
     cq = cq,
+    indices = {
+      
+    }
     threads = {},
     thread_count = 0
   }, Threadpool._mt)
@@ -228,6 +231,22 @@ Threadpool._mt = {__index = {
       end
     end)
   end,
+  
+  sendMessage = function(self, dst, msgtype, msg)
+  
+  end,
+  sendSocket = function(self, dst, socket, msg)
+  
+  end,
+  broadcastMessage = function(self, msgtype, msg)
+  
+  end,
+  broadcastSocket = function(self, socket, msg)
+  
+  end,
+  
+  
+  
 }}
 
 return Threadpool
