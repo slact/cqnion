@@ -1,7 +1,7 @@
-local Threadpool = require "threadpool"
 local cqueues = require "cqueues"
 local HttpServer = require "http.server"
 local Websocket = require "http.websocket"
+local HDRHistogram = require "hdrhistogram"
 
 return function(cq, threadpool)
   assert(cq)
@@ -20,7 +20,7 @@ return function(cq, threadpool)
       assert(ws, err)
       ws:accept()
       for k,v in ws:each() do
-        print(k, v)
+        threadpool:broadcast("msg", v)
       end
     end,
     onerror = function(myserver, context, op, err, errno) -- luacheck: ignore 212

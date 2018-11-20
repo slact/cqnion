@@ -6,9 +6,6 @@ function Threadpool.new(cq, num, thread_module_name)
   assert(cq, "cqueues object mising")
   local tp = setmetatable({
     cq = cq,
-    indices = {
-      
-    }
     threads = {},
     thread_count = 0
   }, Threadpool._mt)
@@ -201,7 +198,7 @@ Threadpool._mt = {__index = {
       -- tread this as if it's been started in a new Lua VM -- which is
       -- exactly what happens
       -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      local Threadpool = require "threadpool"
+      local Threadpool = require "cqworkers.pool"
       local worker = require(thread_worker_module)
       local thread = Threadpool.newThread(socket, num)
       worker(thread, ...)
