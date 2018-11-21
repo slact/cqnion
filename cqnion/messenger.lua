@@ -1,6 +1,7 @@
 local Thread = require "cqueues.thread"
 local Cqueues = require "cqueues"
 local Socket = require "cqueues.socket"
+local Util = require "cqnion.util"
 
 --[[
 ipc message format:
@@ -18,14 +19,12 @@ local Messenger = {
 }
 
 local function receive_message(socket)
-  local header, msgtype, src, size, data, fd, src, err
+  local header, msgtype, size, data, fd, err
   header, err = socket:read("*l")
   if not header then return nil, nil, nil, err end
-  print("HDR:<"..header..">")
-  msgtype, src, size = header:match("^(%w+) src:(%d+) sz:(%d+)$")
+  msgtype, size = header:match("^(%w+) sz:(%d+)$")
   size = tonumber(size)
-  src = tonumber(src)
-  assert(msgtype and size and src)
+  assert(msgtype and size)
   if msgtype == "socket" then
     data, fd, err = socket:recvfd(1024)
   else
@@ -33,9 +32,9 @@ local function receive_message(socket)
   end
   
   if data ~= nil then
-    return msgtype, data, fd
+    return socket, msgtype, data, fd
   else
-    return nil, nil, nil, err
+    return nil, nil, nil, nil, err
   end
 end
 
@@ -67,21 +66,27 @@ function Messenger.registerSocket(socket)
   local cq = assert(get_controller())
   Messenger.sockets[socket]=true
   cq:wrap(function()
-    local receiver = Messenger.receiver
-    local registered = Messenger.sockets[socket]
-    local msgtype, data, received_socket, err = receive_message(socket)
-    if err then
-      print("receiver error:".. tostring(err))
-      error(err)
-    elseif registered and receiver then
-      receiver(msgtype, data, received_socket)
+    while true do
+      local receiver = Messenger.receiver
+      local registered = Messenger.sockets[socket]
+      local msgtype, data, received_socket, err = receive_message(socket)
+      if msgtype == nil then
+        return -- 'we;re done here
+      elseif err then
+        print("receiver error:".. tostring(err))
+        error(err)
+      elseif registered and receiver then
+        receiver(msgtype, data, received_socket)
+      end
     end
   end)
   return Messenger
 end
 
 function Messenger.send(dst_socket, msgtype, msg)
-  assert(Socket.type(dst_socket) == "socket", "dst_socket must be a cqueues socket")
+  if Socket.type(dst_socket) ~= "socket" then
+    error("dst_socket must be a cqueues socket, got " .. Util.type(dst_socket))
+  end
   assert(type(msgtype) == "string")
   msg = tostring(msg)
   if msgtype == "socket" then

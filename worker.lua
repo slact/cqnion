@@ -10,9 +10,13 @@ Worker.controller:wrap(function()
   while true do
     sleep(3)
     local msg = "idea number "..n
-    print("thread " .. Worker.number, msg)
+    --Worker.messageMaster("idea", "thread " .. Worker.number .. " says " .. msg)
     n=n+1
   end
+end)
+
+Worker.setMessageHandler(function(src_sock, msgtype, msg, sock)
+  print("message from master: " .. msgtype .. " : "..msg)
 end)
 
 assert(Worker.controller:loop())

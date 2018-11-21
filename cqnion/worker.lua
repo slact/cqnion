@@ -2,6 +2,7 @@ local Messenger = require "cqnion.messenger"
 local Thread = require "cqueues.thread"
 local Socket = require "cqueues.socket"
 local Cqueues = require "cqueues"
+local Util = require "cqnion.util"
 
 local Worker = {}
 local initialized = false
@@ -45,6 +46,12 @@ function Worker.messageMaster(message_type, message, ...)
   else
     return Messenger.send(Worker.master_socket, message_type, message)
   end
+end
+
+--Execute function inside a new cqueues coroutine, making it asynchronous
+function Worker.async(func)
+  assert(type(func) == "function", "function expected")
+  return Util.wrap(Worker.controller, func)
 end
 
 return Worker

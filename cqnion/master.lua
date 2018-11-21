@@ -2,6 +2,7 @@ local Messenger = require "cqnion.messenger"
 local Thread = require "cqueues.thread"
 local Cqueues = require "cqueues"
 local mm = require "mm"
+local Util = require "cqnion.util"
 local Master = {
   workers = {}
 }
@@ -9,6 +10,7 @@ local Master = {
 function Master.initialize(cq)--nothing to do
   cq = cq or Cqueues.new()
   assert(Cqueues.type(cq) == "controller", "cqueue controller required")
+  Messenger.setController(cq)
   Master.controller = cq
   return Master
 end
@@ -91,31 +93,71 @@ function Master.spawnWorker(name, chunk, ...)
   
   local slot = #Master.workers+1
   
+  
   local thread, socket, err = Thread.start(thread_spawner, chunk, slot, name, ...)
   if not thread then
     print(thread, socket, err)
     return nil, err
-  else
-    return thread, socket
   end
   
-  table.insert(Master.workers, thread)
+  local workerdata = {
+    thread = thread,
+    socket = socket,
+    slot = slot
+  }
   
-  Master.controller:wrap(function()
-  print("wait on thread")
+  table.insert(Master.workers, workerdata)
+  
+  Messenger.registerSocket(socket)
+  
+  --wait for thread to finish
+  workerdata.finisher = Master.async(function()
     local ret, err = thread:join()
     if not ret then io.stderr:write(("%s\n"):format(err)) end
-    for k, v in pairs(Master.workers) do
-      if v == thread then
-        table.remove(thread)
+    local workers = Master.workers
+    for k, v in pairs(workers) do
+      if v == workerdata then
+        table.remove(workers, k)
+        break
       end
     end
   end)
   
+  return true
+end
+
+--Execute function inside a new cqueues coroutine, making it asynchronous
+function Master.async(func)
+  assert(type(func) == "function", "function expected")
+  return Util.wrap(Master.controller, func)
 end
 
 function Master.loop()
   return Master.controller:loop()
 end
+
+
+function Master.setMessageHandler(handler)
+  return Messenger.setReceiver(handler)
+end
+
+function Master.messageWorker(dst_socket, message_type, message, ...)
+  if message_type=="socket" then
+    local socket_to_send = ...
+    return Messenger.sendSocket(dst_socket, socket_to_send, message)
+  else
+    return Messenger.send(dst_socket, message_type, message)
+  end
+end
+
+function Master.messageWorkers(message_type, message, ...)
+  local ok, err
+  for _, workerdata in pairs(Master.workers) do
+    ok, err = Master.messageWorker(workerdata.socket, message_type, message, ...)
+    if not ok then return nil, err end
+  end
+  return true
+end
+
 
 return Master
