@@ -54,4 +54,9 @@ function Worker.async(func)
   return Util.wrap(Worker.controller, func)
 end
 
+
+function Worker.loop()
+  return Worker.controller:loop()
+end
+
 return Worker

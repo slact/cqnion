@@ -1,5 +1,5 @@
 package = "cqnion"
-version = "scm-0"
+version = "0.0.0-1"
 
 description = {
   summary = "cqueues-based worker threads + a master + tools for the to communicate",
