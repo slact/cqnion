@@ -54,6 +54,9 @@ function Worker.async(func)
   return Util.wrap(Worker.controller, func)
 end
 
+function Worker.timer(...)
+  return Util.timer(Worker.controller, ...)
+end
 
 function Worker.loop()
   return Worker.controller:loop()

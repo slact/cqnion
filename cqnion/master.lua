@@ -136,6 +136,10 @@ function Master.loop()
   return Master.controller:loop()
 end
 
+function Master.timer(...)
+  return Util.timer(Master.controller, ...)
+end
+
 
 function Master.setMessageHandler(handler)
   return Messenger.setReceiver(handler)
