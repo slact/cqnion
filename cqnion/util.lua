@@ -1,4 +1,4 @@
-
+local cqueues = require "cqueues"
 
 local cqtype = {"cqueues", "cqueues.socket", "cqueues.signal", "cqueues.thread", "cqueues.notify", "cqueues.dns.record", "cqueues.dns.packet", "cqueues.dns.config", "cqueues.dns.hosts", "cqueues.dns.hints",  "cqueues.dns.resolver", "cqueues.dns.resolvers", "cqueues.condition", "cqueues.promise"}
 for k, v in ipairs(cqtype) do
@@ -20,15 +20,6 @@ local Util = {}
 
 local trace = debug.traceback
 
-function Util.type(val)
-  local t = type(val)
-  if t == "userdata" then
-    return userdata_type(val)
-  else
-    return t
-  end
-end
-
 function Util.wrap(controller, func)
   controller:wrap(function()
     local ok, err = xpcall(func, trace)
@@ -36,7 +27,57 @@ function Util.wrap(controller, func)
       io.stderr:write(err)
     end
   end)
-  return true  
+  return true
+end
+
+local timer_mt = {__index = {
+  cancel = function(self)
+    self.halt = true
+  end
+}}
+
+function Util.timer(controller, timeout_sec, func)
+  assert(type(timeout_sec)=="number" and timeout_sec > 0, "timeout should be a number of seconds")
+  local self = setmetatable({
+    timeout = timeout_sec,
+    starttime = nil
+  }, timer_mt)
+  Util.wrap(controller, function()
+    local timeout = timeout_sec
+    local ret
+    while not rawget(self, "halt") do
+      rawset(self, "starttime", os.time())
+      cqueues.sleep(timeout)
+      ret = func(self)
+      if type(ret) == "number" then
+        if ret <= 0 then
+          error("invalid negative number returned from timer function")
+        end
+        timeout = ret
+        rawset(self, "timeout", timeout)
+      elseif not ret then
+        self.halt = true
+      elseif ret ~= true then
+        error("invalid return from timer function, expected nil, boolean, or number, got ".. Util.type(ret))
+      end
+    end
+  end)
+end
+
+function Util.type(val)
+  local t = type(val)
+  if t == "userdata" then
+    return userdata_type(val)
+  elseif t == "table" then
+    local mt = getmetatable(val)
+    if mt == timer_mt then
+      return "timer"
+    else
+      return t
+    end
+  else
+    return t
+  end
 end
 
 return Util
