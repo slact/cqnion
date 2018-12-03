@@ -20,10 +20,12 @@ local Util = {}
 
 local trace = debug.traceback
 
-function Util.wrap(controller, func)
+function Util.wrap(controller, func, opt)
+  assert(type(func) == "function", "function expected")
+  local silent = type(opt) == "table" and opt.silent
   controller:wrap(function()
     local ok, err = xpcall(func, trace)
-    if not ok then
+    if not ok and not silent then
       io.stderr:write(err)
     end
   end)
@@ -36,7 +38,7 @@ local timer_mt = {__index = {
   end
 }}
 
-function Util.timer(controller, timeout_sec, func)
+function Util.timer(controller, timeout_sec, func, opt)
   assert(type(timeout_sec)=="number" and timeout_sec > 0, "timeout should be a number of seconds")
   local self = setmetatable({
     timeout = timeout_sec,
@@ -50,18 +52,21 @@ function Util.timer(controller, timeout_sec, func)
       cqueues.sleep(timeout)
       ret = func(self)
       if type(ret) == "number" then
+        --new, changed timeout
         if ret <= 0 then
           error("invalid negative number returned from timer function")
+        elseif ret ~= timeout then
+          timeout = ret
+          rawset(self, "timeout", timeout)
         end
-        timeout = ret
-        rawset(self, "timeout", timeout)
       elseif not ret then
         self.halt = true
       elseif ret ~= true then
         error("invalid return from timer function, expected nil, boolean, or number, got ".. Util.type(ret))
       end
     end
-  end)
+  end, opt)
+  return self
 end
 
 function Util.type(val)

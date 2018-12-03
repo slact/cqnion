@@ -1,4 +1,3 @@
-local Thread = require "cqueues.thread"
 local Cqueues = require "cqueues"
 local Socket = require "cqueues.socket"
 local Util = require "cqnion.util"
@@ -22,9 +21,11 @@ local function receive_message(socket)
   local header, msgtype, size, data, fd, err
   header, err = socket:read("*l")
   if not header then return nil, nil, nil, err end
-  msgtype, size = header:match("^(%w+) sz:(%d+)$")
+  msgtype, size = header:match("^(.*) sz:(%d+)$")
   size = tonumber(size)
-  assert(msgtype and size)
+  if not msgtype or not size then
+    error("got invalid header \"" .. header .. "\"")
+  end
   if msgtype == "socket" then
     data, fd, err = socket:recvfd(1024)
   else
@@ -92,7 +93,9 @@ function Messenger.send(dst_socket, msgtype, msg)
   if msgtype == "socket" then
     return nil, "\"socket\" messages must be sent via sendSocket"
   end
-  assert(type(msg) == "string")
+  if type(msg) ~= "string" then
+    error("message must be a string, got " .. type(msg))
+  end
   local header = ("%s sz:%d\n"):format(msgtype, #msg)
   return dst_socket:write(header, msg, "\n")
 end
@@ -105,11 +108,11 @@ function Messenger.sendSocket(dst_socket, socket, msg)
   if #msg < 1024 then
     error("sendSocket message is too long (max: 1024 bytes, current: " .. #msg .. " bytes)")
   end
-  local ret, err = socket:write(("socket sz:0\n"):format(src_thread_number))
+  local ret, err = socket:write("socket sz:0\n")
   if not ret then
     return nil, err
   end
-  return dst_socket:sendfd(msg, socket_to_send)
+  return socket:sendfd(msg, dst_socket)
 end
 
 return Messenger

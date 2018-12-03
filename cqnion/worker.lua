@@ -49,9 +49,8 @@ function Worker.messageMaster(message_type, message, ...)
 end
 
 --Execute function inside a new cqueues coroutine, making it asynchronous
-function Worker.async(func)
-  assert(type(func) == "function", "function expected")
-  return Util.wrap(Worker.controller, func)
+function Worker.async(...)
+  return Util.wrap(Worker.controller, ...)
 end
 
 function Worker.timer(...)
